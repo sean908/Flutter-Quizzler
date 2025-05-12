@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'quiz_brain.dart';
+import 'package:rflutter_alert/rflutter_alert.dart';
 
 void main() => runApp(Quizzler());
 
@@ -38,6 +39,56 @@ class _QuizPageState extends State<QuizPage> {
     super.initState();
     // 生成初始问题
     quizBrain.generateRandomQuestion();
+    
+    // 延迟一帧显示模式选择弹窗，确保界面已经构建完成
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showModeSelectionDialog();
+    });
+  }
+  
+  // 显示模式选择弹窗
+  void showModeSelectionDialog() {
+    Alert(
+      context: context,
+      title: "选择答题模式",
+      desc: "请选择您想要的答题模式",
+      buttons: [
+        DialogButton(
+          child: Text(
+            "无尽模式",
+            style: TextStyle(color: Colors.white, fontSize: 20),
+          ),
+          onPressed: () {
+            Navigator.pop(context);
+            setState(() {
+              // 切换到无尽模式并重置状态
+              quizBrain.setQuizMode(QuizMode.endless);
+              // 清空答题记录
+              scoreKeeper.clear();
+              resultMessage = '';
+            });
+          },
+          color: Colors.blue,
+        ),
+        DialogButton(
+          child: Text(
+            "普通模式",
+            style: TextStyle(color: Colors.white, fontSize: 20),
+          ),
+          onPressed: () {
+            Navigator.pop(context);
+            setState(() {
+              // 切换到普通模式并重置状态
+              quizBrain.setQuizMode(QuizMode.normal);
+              // 清空答题记录
+              scoreKeeper.clear();
+              resultMessage = '';
+            });
+          },
+          color: Colors.green,
+        )
+      ],
+    ).show();
   }
 
   void checkAnswer(bool userAnswer) {
@@ -61,7 +112,42 @@ class _QuizPageState extends State<QuizPage> {
       
       // 添加新图标
       scoreKeeper.add(newIcon);
+      
+      // 检查是否所有问题都已回答
+      if (quizBrain.isAllQuestionsAnswered()) {
+        resultMessage = '已完成所有题目，请重置或更换模式继续';
+        showCompletionAlert();
+      }
     });
+  }
+  
+  void showCompletionAlert() {
+    Alert(
+      context: context,
+      title: "恭喜!",
+      desc: "您已经答完题库里所有问题\n答题按钮已禁用\n请点击\"再来一次\"重新开始，或\"确认\"保留当前状态",
+      buttons: [
+        DialogButton(
+          child: Text(
+            "确认",
+            style: TextStyle(color: Colors.white, fontSize: 20),
+          ),
+          onPressed: () => Navigator.pop(context),
+          color: Colors.green,
+        ),
+        DialogButton(
+          child: Text(
+            "再来一次",
+            style: TextStyle(color: Colors.white, fontSize: 20),
+          ),
+          onPressed: () {
+            Navigator.pop(context);
+            resetQuiz();
+          },
+          color: Colors.blue,
+        )
+      ],
+    ).show();
   }
   
   void resetQuiz() {
@@ -78,13 +164,42 @@ class _QuizPageState extends State<QuizPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 获取当前模式名称
+    String modeName = quizBrain.quizMode == QuizMode.endless ? '无尽模式' : '普通模式';
+    // 获取题目统计
+    String questionStats = quizBrain.quizMode == QuizMode.normal 
+        ? '${quizBrain.answeredQuestions}/${quizBrain.totalQuestions}题'
+        : '已答${quizBrain.answeredQuestions}题';
+    // 获取正确率
+    String accuracyText = '正确率: ${quizBrain.getAccuracy().toStringAsFixed(1)}%';
+    
+    // 判断按钮是否应该禁用（普通模式下答完所有题目）
+    bool buttonsDisabled = quizBrain.quizMode == QuizMode.normal && quizBrain.isAllQuestionsAnswered();
+    
     return Column(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 10.0, left: 10.0),
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                ),
+                onPressed: showModeSelectionDialog,
+                child: const Text(
+                  '模式',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16.0,
+                  ),
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.only(top: 10.0, right: 10.0),
               child: TextButton(
@@ -104,6 +219,31 @@ class _QuizPageState extends State<QuizPage> {
             ),
           ],
         ),
+        
+        // 显示当前模式和统计信息
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                modeName,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16.0,
+                ),
+              ),
+              Text(
+                '$questionStats - $accuracyText',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16.0,
+                ),
+              ),
+            ],
+          ),
+        ),
+        
         Expanded(
           flex: 5,
           child: Padding(
@@ -128,6 +268,8 @@ class _QuizPageState extends State<QuizPage> {
                 foregroundColor: Colors.white,
                 backgroundColor: Colors.green,
                 padding: const EdgeInsets.all(16.0),
+                // 如果按钮禁用，设置更暗的颜色
+                disabledBackgroundColor: Colors.green.withOpacity(0.3),
               ),
               child: Text(
                 'True',
@@ -136,7 +278,7 @@ class _QuizPageState extends State<QuizPage> {
                   fontSize: 20.0,
                 ),
               ),
-              onPressed: () {
+              onPressed: buttonsDisabled ? null : () {
                 checkAnswer(true);
               },
             ),
@@ -148,6 +290,8 @@ class _QuizPageState extends State<QuizPage> {
             child: TextButton(
               style: TextButton.styleFrom(
                 backgroundColor: Colors.red,
+                // 如果按钮禁用，设置更暗的颜色
+                disabledBackgroundColor: Colors.red.withOpacity(0.3),
               ),
               child: Text(
                 'False',
@@ -156,7 +300,7 @@ class _QuizPageState extends State<QuizPage> {
                   color: Colors.white,
                 ),
               ),
-              onPressed: () {
+              onPressed: buttonsDisabled ? null : () {
                 checkAnswer(false);
               },
             ),
@@ -185,9 +329,4 @@ class _QuizPageState extends State<QuizPage> {
   }
 }
 
-/*
-question1: 'You can lead a cow down stairs but not up stairs.', false,
-question2: 'Approximately one quarter of human bones are in the feet.', true,
-question3: 'A slug\'s blood is green.', true,
-*/
 //TODO: Nothing
